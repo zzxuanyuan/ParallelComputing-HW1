@@ -7,8 +7,8 @@ MKLROOT = /util/comp/intel/16/mkl
 LDLIBS = -ldl -lrt -Wl,--start-group $(MKLROOT)/lib/intel64/libmkl_intel_lp64.a $(MKLROOT)/lib/intel64/libmkl_sequential.a $(MKLROOT)/lib/intel64/libmkl_core.a -Wl,--end-group -lpthread -lm
 
 
-targets = benchmark-naive benchmark-blocked benchmark-blas
-objects = benchmark.o dgemm-naive.o dgemm-blocked.o dgemm-blas.o
+targets = benchmark-zhezhang benchmark-naive benchmark-blocked benchmark-blas
+objects = benchmark.o dgemm-zhezhang.o dgemm-naive.o dgemm-blocked.o dgemm-blas.o
 
 .PHONY : default
 default : all
@@ -21,6 +21,8 @@ benchmark-naive : benchmark.o dgemm-naive.o
 benchmark-blocked : benchmark.o dgemm-blocked.o
 	$(CC) -o $@ $^ $(LDLIBS)
 benchmark-blas : benchmark.o dgemm-blas.o
+	$(CC) -o $@ $^ $(LDLIBS)
+benchmark-zhezhang : benchmark.o dgemm-zhezhang.o
 	$(CC) -o $@ $^ $(LDLIBS)
 
 %.o : %.c
