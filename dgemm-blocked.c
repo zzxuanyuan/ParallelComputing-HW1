@@ -40,12 +40,15 @@ static void single_mult (int K, double *x, int incx, double *y, double *sm)
 static void do_block (int lda, int M, int N, int K, double* A, double* B, double* C)
 {
   /* For each row i of A */
-  for (int i = 0; i < M; ++i)
+  for (int i = 0; i < M; i+=4)
     /* For each column j of B */ 
     for (int j = 0; j < N; ++j) 
     {
       /* Compute C(i,j) */
       single_mult(K, &A[i], lda, &B[j*lda], &C[i+j*lda]);
+      single_mult(K, &A[i+1], lda, &B[j*lda], &C[i+1+j*lda]);
+      single_mult(K, &A[i+2], lda, &B[j*lda], &C[i+2+j*lda]);
+      single_mult(K, &A[i+3], lda, &B[j*lda], &C[i+3+j*lda]);
     }
 }
 
