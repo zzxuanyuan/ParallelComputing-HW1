@@ -21,19 +21,6 @@ const char* dgemm_desc = "Simple blocked dgemm.";
 
 #define min(a,b) (((a)<(b))?(a):(b))
 
-#define X(k) x[(k)*incx]
-
-static void single_mult (int K, double *x, int incx, double *y, double *sm)
-{
-/* sm represents single multiplication
- *  sm = x * y + sm
- *  x increases by incx which is the stride size, and y increases by 1
- */
-  for(int k = 0; k < K; ++k) {
-    *sm += X(k) * y[k];
-  }
-}
-
 static void fourrow_mult (int K, double *x, int incx, double *y, double *frm)
 {
 /* frm represents four row multiplication
@@ -43,23 +30,29 @@ static void fourrow_mult (int K, double *x, int incx, double *y, double *frm)
  *  frm[3] = x[3] * y + frm[3]
  *  each time calculate four rows within the same columns of x
  */
-  single_mult(K, x,   incx, y, frm  );
-  single_mult(K, x+1, incx, y, frm+1);
-  single_mult(K, x+2, incx, y, frm+2);
-  single_mult(K, x+3, incx, y, frm+3);
+  for(int k = 0; k < K; ++k)
+  {
+    frm[0] += x[k*incx]   * y[k];
+    frm[1] += x[1+k*incx] * y[k];
+    frm[2] += x[2+k*incx] * y[k];
+    frm[3] += x[3+k*incx] * y[k];
+  }
 }
 
 static void eightrow_mult (int K, double *x, int incx, double *y, double *erm)
 {
 /* similar with above, calculate eight rows at each iteration */
-  single_mult(K, x,   incx, y, erm  );
-  single_mult(K, x+1, incx, y, erm+1);
-  single_mult(K, x+2, incx, y, erm+2);
-  single_mult(K, x+3, incx, y, erm+3);
-  single_mult(K, x+4, incx, y, erm+4);
-  single_mult(K, x+5, incx, y, erm+5);
-  single_mult(K, x+6, incx, y, erm+6);
-  single_mult(K, x+7, incx, y, erm+7);
+  for(int k = 0; k < K; ++k)
+  {
+    erm[0] += x[k*incx]   * y[k];
+    erm[1] += x[1+k*incx] * y[k];
+    erm[2] += x[2+k*incx] * y[k];
+    erm[3] += x[3+k*incx] * y[k];
+    erm[4] += x[4+k*incx] * y[k];
+    erm[5] += x[5+k*incx] * y[k];
+    erm[6] += x[6+k*incx] * y[k];
+    erm[7] += x[7+k*incx] * y[k];
+  }
 }
 
 /* This auxiliary subroutine performs a smaller dgemm operation
