@@ -34,21 +34,47 @@ static void single_mult (int K, double *x, int incx, double *y, double *sm)
   }
 }
 
+static void fourrow_mult (int K, double *x, int incx, double *y, double *frm)
+{
+/* frm represents four row multiplication
+ *  frm[0] = x[0] * y + frm[0]
+ *  frm[1] = x[1] * y + frm[1]
+ *  frm[2] = x[2] * y + frm[2]
+ *  frm[3] = x[3] * y + frm[3]
+ *  each time calculate four rows within the same columns of x
+ */
+  single_mult(K, x,   incx, y, frm  );
+  single_mult(K, x+1, incx, y, frm+1);
+  single_mult(K, x+2, incx, y, frm+2);
+  single_mult(K, x+3, incx, y, frm+3);
+}
+
+static void eightrow_mult (int K, double *x, int incx, double *y, double *erm)
+{
+/* similar with above, calculate eight rows at each iteration */
+  single_mult(K, x,   incx, y, erm  );
+  single_mult(K, x+1, incx, y, erm+1);
+  single_mult(K, x+2, incx, y, erm+2);
+  single_mult(K, x+3, incx, y, erm+3);
+  single_mult(K, x+4, incx, y, erm+4);
+  single_mult(K, x+5, incx, y, erm+5);
+  single_mult(K, x+6, incx, y, erm+6);
+  single_mult(K, x+7, incx, y, erm+7);
+}
+
 /* This auxiliary subroutine performs a smaller dgemm operation
  *  C := C + A * B
  * where C is M-by-N, A is M-by-K, and B is K-by-N. */
 static void do_block (int lda, int M, int N, int K, double* A, double* B, double* C)
 {
   /* For each row i of A */
-  for (int i = 0; i < M; i+=4)
+  for (int i = 0; i < M; i+=8)
     /* For each column j of B */ 
     for (int j = 0; j < N; ++j) 
     {
       /* Compute C(i,j) */
-      single_mult(K, &A[i], lda, &B[j*lda], &C[i+j*lda]);
-      single_mult(K, &A[i+1], lda, &B[j*lda], &C[i+1+j*lda]);
-      single_mult(K, &A[i+2], lda, &B[j*lda], &C[i+2+j*lda]);
-      single_mult(K, &A[i+3], lda, &B[j*lda], &C[i+3+j*lda]);
+//      fourrow_mult(K, A+i, lda, B+j*lda, C+i+j*lda);
+      eightrow_mult(K, A+i, lda, B+j*lda, C+i+j*lda);
     }
 }
 
