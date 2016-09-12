@@ -21,6 +21,19 @@ const char* dgemm_desc = "Simple blocked dgemm.";
 
 #define min(a,b) (((a)<(b))?(a):(b))
 
+#define X(k) x[(k)*incx]
+
+static void single_mult (int K, double *x, int incx, double *y, double *sm)
+{
+/* sm represents single multiplication
+ *  sm = x * y + sm
+ *  x increases by incx which is the stride size, and y increases by 1
+ */
+  for(int k = 0; k < K; ++k) {
+    *sm += X(k) * y[k];
+  }
+}
+
 /* This auxiliary subroutine performs a smaller dgemm operation
  *  C := C + A * B
  * where C is M-by-N, A is M-by-K, and B is K-by-N. */
@@ -32,10 +45,7 @@ static void do_block (int lda, int M, int N, int K, double* A, double* B, double
     for (int j = 0; j < N; ++j) 
     {
       /* Compute C(i,j) */
-      double cij = C[i+j*lda];
-      for (int k = 0; k < K; ++k)
-	cij += A[i+k*lda] * B[k+j*lda];
-      C[i+j*lda] = cij;
+      single_mult(K, &A[i], lda, &B[j*lda], &C[i+j*lda]);
     }
 }
 
