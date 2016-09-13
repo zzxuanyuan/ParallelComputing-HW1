@@ -74,14 +74,33 @@ static void mult1x4 (int K, int inc, double *x, double *y, double *fcm)
   double *y2_ptr = &y[2*inc];
   double *y3_ptr = &y[3*inc];
 
-  for(int k = 0; k < K; ++k)
+  for(int k = 0; k < K; k+=4)
   {
     x_reg      = *x_ptr;
-    x_ptr     += inc;
-    fcm_reg_0 += x_reg * *y0_ptr++;
-    fcm_reg_1 += x_reg * *y1_ptr++;
-    fcm_reg_2 += x_reg * *y2_ptr++;
-    fcm_reg_3 += x_reg * *y3_ptr++;
+    fcm_reg_0 += x_reg * *y0_ptr;
+    fcm_reg_1 += x_reg * *y1_ptr;
+    fcm_reg_2 += x_reg * *y2_ptr;
+    fcm_reg_3 += x_reg * *y3_ptr;
+    x_reg      = *(x_ptr+inc);
+    fcm_reg_0 += x_reg * *(y0_ptr+1);
+    fcm_reg_1 += x_reg * *(y1_ptr+1);
+    fcm_reg_2 += x_reg * *(y2_ptr+1);
+    fcm_reg_3 += x_reg * *(y3_ptr+1);
+    x_reg      = *(x_ptr+2*inc);
+    fcm_reg_0 += x_reg * *(y0_ptr+2);
+    fcm_reg_1 += x_reg * *(y1_ptr+2);
+    fcm_reg_2 += x_reg * *(y2_ptr+2);
+    fcm_reg_3 += x_reg * *(y3_ptr+2);
+    x_reg      = *(x_ptr+3*inc);
+    fcm_reg_0 += x_reg * *(y0_ptr+3);
+    fcm_reg_1 += x_reg * *(y1_ptr+3);
+    fcm_reg_2 += x_reg * *(y2_ptr+3);
+    fcm_reg_3 += x_reg * *(y3_ptr+3);
+    x_ptr  += 4*inc;
+    y0_ptr += 4;
+    y1_ptr += 4;
+    y2_ptr += 4;
+    y3_ptr += 4;
   }
 
   fcm[0]     = fcm_reg_0;
