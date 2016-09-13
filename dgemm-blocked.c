@@ -214,13 +214,13 @@ static void mult1x8 (int K, int inc, double *x, double *y, double *ecm)
 static void do_block (int lda, int M, int N, int K, double* A, double* B, double* C)
 {
   /* For each row i of A */
-  for (int j = 0; j < N; j+=8)
+  for (int j = 0; j < N; j+=4)
     /* For each column j of B */ 
     for (int i = 0; i < M; ++i) 
     {
       /* Compute C(i,j) */
-//      mult1x4(K, lda, A+i, B+j*lda, C+i+j*lda);
-      mult1x8(K, lda, A+i, B+j*lda, C+i+j*lda);
+      mult1x4(K, lda, A+i, B+j*lda, C+i+j*lda);
+//      mult1x8(K, lda, A+i, B+j*lda, C+i+j*lda);
     }
 }
 
