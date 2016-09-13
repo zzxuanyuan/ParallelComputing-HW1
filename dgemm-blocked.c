@@ -58,17 +58,45 @@ static void fourrow_mult (int K, double *x, int incx, double *y, double *frm)
 static void eightrow_mult (int K, double *x, int incx, double *y, double *erm)
 {
 /* similar with above, calculate eight rows at each iteration */
+  register double erm_reg_0 = 0.0;
+  register double erm_reg_1 = 0.0;
+  register double erm_reg_2 = 0.0;
+  register double erm_reg_3 = 0.0;
+  register double erm_reg_4 = 0.0;
+  register double erm_reg_5 = 0.0;
+  register double erm_reg_6 = 0.0;
+  register double erm_reg_7 = 0.0;
+  register double y_reg     = 0.0;
+  erm_reg_0  = erm[0];
+  erm_reg_1  = erm[1];
+  erm_reg_2  = erm[2];
+  erm_reg_3  = erm[3];
+  erm_reg_4  = erm[4];
+  erm_reg_5  = erm[5];
+  erm_reg_6  = erm[6];
+  erm_reg_7  = erm[7];
+
   for(int k = 0; k < K; ++k)
   {
-    erm[0] += x[k*incx]   * y[k];
-    erm[1] += x[1+k*incx] * y[k];
-    erm[2] += x[2+k*incx] * y[k];
-    erm[3] += x[3+k*incx] * y[k];
-    erm[4] += x[4+k*incx] * y[k];
-    erm[5] += x[5+k*incx] * y[k];
-    erm[6] += x[6+k*incx] * y[k];
-    erm[7] += x[7+k*incx] * y[k];
+    y_reg      = y[k];
+    erm_reg_0 += y_reg * x[k*incx];
+    erm_reg_1 += y_reg * x[1+k*incx];
+    erm_reg_2 += y_reg * x[2+k*incx];
+    erm_reg_3 += y_reg * x[3+k*incx];
+    erm_reg_4 += y_reg * x[4+k*incx];
+    erm_reg_5 += y_reg * x[5+k*incx];
+    erm_reg_6 += y_reg * x[6+k*incx];
+    erm_reg_7 += y_reg * x[7+k*incx];
   }
+
+  erm[0] = erm_reg_0;
+  erm[1] = erm_reg_1;
+  erm[2] = erm_reg_2;
+  erm[3] = erm_reg_3;
+  erm[4] = erm_reg_4;
+  erm[5] = erm_reg_5;
+  erm[6] = erm_reg_6;
+  erm[7] = erm_reg_7;
 }
 
 /* This auxiliary subroutine performs a smaller dgemm operation
@@ -77,13 +105,13 @@ static void eightrow_mult (int K, double *x, int incx, double *y, double *erm)
 static void do_block (int lda, int M, int N, int K, double* A, double* B, double* C)
 {
   /* For each row i of A */
-  for (int i = 0; i < M; i+=4)
+  for (int i = 0; i < M; i+=8)
     /* For each column j of B */ 
     for (int j = 0; j < N; ++j) 
     {
       /* Compute C(i,j) */
-      fourrow_mult(K, A+i, lda, B+j*lda, C+i+j*lda);
-//      eightrow_mult(K, A+i, lda, B+j*lda, C+i+j*lda);
+//      fourrow_mult(K, A+i, lda, B+j*lda, C+i+j*lda);
+      eightrow_mult(K, A+i, lda, B+j*lda, C+i+j*lda);
     }
 }
 
