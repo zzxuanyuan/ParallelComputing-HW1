@@ -109,6 +109,104 @@ static void mult1x4 (int K, int inc, double *x, double *y, double *fcm)
   fcm[3*inc] = fcm_reg_3;
 }
 
+/* 4 row of x multiplies 4 columns of y */
+static void mult4x4 (int K, int inc, double *x, double *y, double *fsm)
+{
+  register double fsm_reg_00 = 0.0;
+  register double fsm_reg_01 = 0.0;
+  register double fsm_reg_02 = 0.0;
+  register double fsm_reg_03 = 0.0;
+  register double fsm_reg_10 = 0.0;
+  register double fsm_reg_11 = 0.0;
+  register double fsm_reg_12 = 0.0;
+  register double fsm_reg_13 = 0.0;
+  register double fsm_reg_20 = 0.0;
+  register double fsm_reg_21 = 0.0;
+  register double fsm_reg_22 = 0.0;
+  register double fsm_reg_23 = 0.0;
+  register double fsm_reg_30 = 0.0;
+  register double fsm_reg_31 = 0.0;
+  register double fsm_reg_32 = 0.0;
+  register double fsm_reg_33 = 0.0;
+  register double x0_reg     = 0.0;
+  register double x1_reg     = 0.0;
+  register double x2_reg     = 0.0;
+  register double x3_reg     = 0.0;
+  fsm_reg_00  = fsm[0];
+  fsm_reg_01  = fsm[inc];
+  fsm_reg_02  = fsm[2*inc];
+  fsm_reg_03  = fsm[3*inc];
+  fsm_reg_10  = fsm[1];
+  fsm_reg_11  = fsm[1+inc];
+  fsm_reg_12  = fsm[1+2*inc];
+  fsm_reg_13  = fsm[1+3*inc];
+  fsm_reg_20  = fsm[2];
+  fsm_reg_21  = fsm[2+inc];
+  fsm_reg_22  = fsm[2+2*inc];
+  fsm_reg_23  = fsm[2+3*inc];
+  fsm_reg_30  = fsm[3];
+  fsm_reg_31  = fsm[3+inc];
+  fsm_reg_32  = fsm[3+2*inc];
+  fsm_reg_33  = fsm[3+3*inc];
+  double *x0_ptr = &x[0];
+  double *x1_ptr = &x[1];
+  double *x2_ptr = &x[2];
+  double *x3_ptr = &x[3];
+  double *y0_ptr = &y[0];
+  double *y1_ptr = &y[inc];
+  double *y2_ptr = &y[2*inc];
+  double *y3_ptr = &y[3*inc];
+
+  for(int k = 0; k < K; ++k)
+  {
+    x0_reg      = *x0_ptr;
+    x1_reg      = *x1_ptr;
+    x2_reg      = *x2_ptr;
+    x3_reg      = *x3_ptr;
+    x0_ptr     += inc;
+    x1_ptr     += inc;
+    x2_ptr     += inc;
+    x3_ptr     += inc;
+    fsm_reg_00 += x0_reg * *y0_ptr;
+    fsm_reg_10 += x1_reg * *y0_ptr;
+    fsm_reg_20 += x2_reg * *y0_ptr;
+    fsm_reg_30 += x3_reg * *y0_ptr;
+    fsm_reg_01 += x0_reg * *y1_ptr;
+    fsm_reg_11 += x1_reg * *y1_ptr;
+    fsm_reg_21 += x2_reg * *y1_ptr;
+    fsm_reg_31 += x3_reg * *y1_ptr;
+    fsm_reg_02 += x0_reg * *y2_ptr;
+    fsm_reg_12 += x1_reg * *y2_ptr;
+    fsm_reg_22 += x2_reg * *y2_ptr;
+    fsm_reg_32 += x3_reg * *y2_ptr;
+    fsm_reg_03 += x0_reg * *y3_ptr;
+    fsm_reg_13 += x1_reg * *y3_ptr;
+    fsm_reg_23 += x2_reg * *y3_ptr;
+    fsm_reg_33 += x3_reg * *y3_ptr;
+    y0_ptr     += 1;
+    y1_ptr     += 1;
+    y2_ptr     += 1;
+    y3_ptr     += 1;
+  }
+
+  fsm[0]       = fsm_reg_00;
+  fsm[inc]     = fsm_reg_01;
+  fsm[2*inc]   = fsm_reg_02;
+  fsm[3*inc]   = fsm_reg_03;
+  fsm[1]       = fsm_reg_10;
+  fsm[1+inc]   = fsm_reg_11;
+  fsm[1+2*inc] = fsm_reg_12;
+  fsm[1+3*inc] = fsm_reg_13;
+  fsm[2]       = fsm_reg_20;
+  fsm[2+inc]   = fsm_reg_21;
+  fsm[2+2*inc] = fsm_reg_22;
+  fsm[2+3*inc] = fsm_reg_23;
+  fsm[3]       = fsm_reg_30;
+  fsm[3+inc]   = fsm_reg_31;
+  fsm[3+2*inc] = fsm_reg_32;
+  fsm[3+3*inc] = fsm_reg_33;
+}
+
 /* 8 rows of x multiply 1 column of y */
 static void mult8x1 (int K, int inc, double *x, double *y, double *erm)
 {
@@ -216,10 +314,11 @@ static void do_block (int lda, int M, int N, int K, double* A, double* B, double
   /* For each row i of A */
   for (int j = 0; j < N; j+=4)
     /* For each column j of B */ 
-    for (int i = 0; i < M; ++i) 
+    for (int i = 0; i < M; i+=4) 
     {
       /* Compute C(i,j) */
-      mult1x4(K, lda, A+i, B+j*lda, C+i+j*lda);
+//      mult1x4(K, lda, A+i, B+j*lda, C+i+j*lda);
+      mult4x4(K, lda, A+i, B+j*lda, C+i+j*lda);
 //      mult1x8(K, lda, A+i, B+j*lda, C+i+j*lda);
     }
 }
