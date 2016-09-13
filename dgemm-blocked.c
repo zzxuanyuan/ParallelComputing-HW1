@@ -30,13 +30,29 @@ static void fourrow_mult (int K, double *x, int incx, double *y, double *frm)
  *  frm[3] = x[3] * y + frm[3]
  *  each time calculate four rows within the same columns of x
  */
+  register double frm_reg_0 = 0.0;
+  register double frm_reg_1 = 0.0;
+  register double frm_reg_2 = 0.0;
+  register double frm_reg_3 = 0.0;
+  register double y_reg     = 0.0;
+  frm_reg_0  = frm[0];
+  frm_reg_1  = frm[1];
+  frm_reg_2  = frm[2];
+  frm_reg_3  = frm[3];
+
   for(int k = 0; k < K; ++k)
   {
-    frm[0] += x[k*incx]   * y[k];
-    frm[1] += x[1+k*incx] * y[k];
-    frm[2] += x[2+k*incx] * y[k];
-    frm[3] += x[3+k*incx] * y[k];
+    y_reg      = y[k];
+    frm_reg_0 += y_reg * x[k*incx];
+    frm_reg_1 += y_reg * x[1+k*incx];
+    frm_reg_2 += y_reg * x[2+k*incx];
+    frm_reg_3 += y_reg * x[3+k*incx];
   }
+
+  frm[0] = frm_reg_0;
+  frm[1] = frm_reg_1;
+  frm[2] = frm_reg_2;
+  frm[3] = frm_reg_3;
 }
 
 static void eightrow_mult (int K, double *x, int incx, double *y, double *erm)
@@ -61,13 +77,13 @@ static void eightrow_mult (int K, double *x, int incx, double *y, double *erm)
 static void do_block (int lda, int M, int N, int K, double* A, double* B, double* C)
 {
   /* For each row i of A */
-  for (int i = 0; i < M; i+=8)
+  for (int i = 0; i < M; i+=4)
     /* For each column j of B */ 
     for (int j = 0; j < N; ++j) 
     {
       /* Compute C(i,j) */
-//      fourrow_mult(K, A+i, lda, B+j*lda, C+i+j*lda);
-      eightrow_mult(K, A+i, lda, B+j*lda, C+i+j*lda);
+      fourrow_mult(K, A+i, lda, B+j*lda, C+i+j*lda);
+//      eightrow_mult(K, A+i, lda, B+j*lda, C+i+j*lda);
     }
 }
 
