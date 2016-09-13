@@ -1,7 +1,7 @@
 # On Trestles we will check versus your performance versus Intel MKL library's BLAS. 
 
 CC = cc 
-OPT = -O3
+OPT = -O3 -mavx
 CFLAGS = -Wall -std=gnu99 $(OPT)
 MKLROOT = /util/comp/intel/16/mkl
 LDLIBS = -ldl -lrt -Wl,--start-group $(MKLROOT)/lib/intel64/libmkl_intel_lp64.a $(MKLROOT)/lib/intel64/libmkl_sequential.a $(MKLROOT)/lib/intel64/libmkl_core.a -Wl,--end-group -lpthread -lm
