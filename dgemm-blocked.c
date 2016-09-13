@@ -109,106 +109,99 @@ static void mult1x4 (int K, int inc, double *x, double *y, double *fcm)
   fcm[3*inc] = fcm_reg_3;
 }
 
+#include <mmintrin.h>
+#include <xmmintrin.h>  // SSE
+#include <pmmintrin.h>  // SSE2
+#include <emmintrin.h>  // SSE3
+
+typedef union
+{
+  __m128d v;
+  double d[2];
+} v2df_t;
+
 /* 4 row of x multiplies 4 columns of y */
 static void mult4x4 (int K, int inc, double *x, double *y, double *fsm)
 {
-  register double fsm_reg_00 = 0.0;
-  register double fsm_reg_01 = 0.0;
-  register double fsm_reg_02 = 0.0;
-  register double fsm_reg_03 = 0.0;
-  register double fsm_reg_10 = 0.0;
-  register double fsm_reg_11 = 0.0;
-  register double fsm_reg_12 = 0.0;
-  register double fsm_reg_13 = 0.0;
-  register double fsm_reg_20 = 0.0;
-  register double fsm_reg_21 = 0.0;
-  register double fsm_reg_22 = 0.0;
-  register double fsm_reg_23 = 0.0;
-  register double fsm_reg_30 = 0.0;
-  register double fsm_reg_31 = 0.0;
-  register double fsm_reg_32 = 0.0;
-  register double fsm_reg_33 = 0.0;
-  register double x0_reg     = 0.0;
-  register double x1_reg     = 0.0;
-  register double x2_reg     = 0.0;
-  register double x3_reg     = 0.0;
-  register double y0_reg     = 0.0;
-  register double y1_reg     = 0.0;
-  register double y2_reg     = 0.0;
-  register double y3_reg     = 0.0;
-  fsm_reg_00  = fsm[0];
-  fsm_reg_01  = fsm[inc];
-  fsm_reg_02  = fsm[2*inc];
-  fsm_reg_03  = fsm[3*inc];
-  fsm_reg_10  = fsm[1];
-  fsm_reg_11  = fsm[1+inc];
-  fsm_reg_12  = fsm[1+2*inc];
-  fsm_reg_13  = fsm[1+3*inc];
-  fsm_reg_20  = fsm[2];
-  fsm_reg_21  = fsm[2+inc];
-  fsm_reg_22  = fsm[2+2*inc];
-  fsm_reg_23  = fsm[2+3*inc];
-  fsm_reg_30  = fsm[3];
-  fsm_reg_31  = fsm[3+inc];
-  fsm_reg_32  = fsm[3+2*inc];
-  fsm_reg_33  = fsm[3+3*inc];
-  double *x0_ptr = &x[0];
-  double *x1_ptr = &x[1];
-  double *x2_ptr = &x[2];
-  double *x3_ptr = &x[3];
-  double *y0_ptr = &y[0];
-  double *y1_ptr = &y[inc];
-  double *y2_ptr = &y[2*inc];
-  double *y3_ptr = &y[3*inc];
+  v2df_t fsm_vreg_00_10;
+  v2df_t fsm_vreg_20_30;
+  v2df_t fsm_vreg_01_11;
+  v2df_t fsm_vreg_21_31;
+  v2df_t fsm_vreg_02_12;
+  v2df_t fsm_vreg_22_32;
+  v2df_t fsm_vreg_03_13;
+  v2df_t fsm_vreg_23_33;
+  fsm_vreg_00_10.v = _mm_setzero_pd();
+  fsm_vreg_20_30.v = _mm_setzero_pd();
+  fsm_vreg_01_11.v = _mm_setzero_pd();
+  fsm_vreg_21_31.v = _mm_setzero_pd();
+  fsm_vreg_02_12.v = _mm_setzero_pd();
+  fsm_vreg_22_32.v = _mm_setzero_pd();
+  fsm_vreg_03_13.v = _mm_setzero_pd();
+  fsm_vreg_23_33.v = _mm_setzero_pd();
+  fsm_vreg_00_10.v = _mm_load_pd((double *) &fsm[0]);
+  fsm_vreg_20_30.v = _mm_load_pd((double *) &fsm[2]);
+  fsm_vreg_01_11.v = _mm_load_pd((double *) &fsm[inc]);
+  fsm_vreg_21_31.v = _mm_load_pd((double *) &fsm[2+inc]);
+  fsm_vreg_02_12.v = _mm_load_pd((double *) &fsm[2*inc]);
+  fsm_vreg_22_32.v = _mm_load_pd((double *) &fsm[2+2*inc]);
+  fsm_vreg_03_13.v = _mm_load_pd((double *) &fsm[3*inc]);
+  fsm_vreg_23_33.v = _mm_load_pd((double *) &fsm[2+3*inc]);
+  v2df_t x_vreg_0k_1k;
+  v2df_t x_vreg_2k_3k;
+  v2df_t y_vreg_k0_k0;
+  v2df_t y_vreg_k1_k1;
+  v2df_t y_vreg_k2_k2;
+  v2df_t y_vreg_k3_k3;  
+  x_vreg_0k_1k.v = _mm_setzero_pd();
+  x_vreg_2k_3k.v = _mm_setzero_pd();
+  y_vreg_k0_k0.v = _mm_setzero_pd();
+  y_vreg_k1_k1.v = _mm_setzero_pd();
+  y_vreg_k2_k2.v = _mm_setzero_pd();
+  y_vreg_k3_k3.v = _mm_setzero_pd();
+  double *x_0k_1k_ptr = &x[0];
+  double *x_2k_3k_ptr = &x[2];
+  double *y_k0_k0_ptr = &y[0];
+  double *y_k1_k1_ptr = &y[inc];
+  double *y_k2_k2_ptr = &y[2*inc];
+  double *y_k3_k3_ptr = &y[3*inc];
 
   for(int k = 0; k < K; ++k)
   {
-    x0_reg      = *x0_ptr;
-    x1_reg      = *x1_ptr;
-    x2_reg      = *x2_ptr;
-    x3_reg      = *x3_ptr;
-    x0_ptr     += inc;
-    x1_ptr     += inc;
-    x2_ptr     += inc;
-    x3_ptr     += inc;
-    y0_reg      = *y0_ptr++;
-    y1_reg      = *y1_ptr++;
-    y2_reg      = *y2_ptr++;
-    y3_reg      = *y3_ptr++;
-    fsm_reg_00 += x0_reg * y0_reg;
-    fsm_reg_10 += x1_reg * y0_reg;
-    fsm_reg_20 += x2_reg * y0_reg;
-    fsm_reg_30 += x3_reg * y0_reg;
-    fsm_reg_01 += x0_reg * y1_reg;
-    fsm_reg_11 += x1_reg * y1_reg;
-    fsm_reg_21 += x2_reg * y1_reg;
-    fsm_reg_31 += x3_reg * y1_reg;
-    fsm_reg_02 += x0_reg * y2_reg;
-    fsm_reg_12 += x1_reg * y2_reg;
-    fsm_reg_22 += x2_reg * y2_reg;
-    fsm_reg_32 += x3_reg * y2_reg;
-    fsm_reg_03 += x0_reg * y3_reg;
-    fsm_reg_13 += x1_reg * y3_reg;
-    fsm_reg_23 += x2_reg * y3_reg;
-    fsm_reg_33 += x3_reg * y3_reg;
+    x_vreg_0k_1k.v = _mm_load_pd((double *) x_0k_1k_ptr);
+    x_vreg_2k_3k.v = _mm_load_pd((double *) x_2k_3k_ptr);
+    y_vreg_k0_k0.v = _mm_loaddup_pd((double *) y_k0_k0_ptr++);
+    y_vreg_k1_k1.v = _mm_loaddup_pd((double *) y_k1_k1_ptr++);
+    y_vreg_k2_k2.v = _mm_loaddup_pd((double *) y_k2_k2_ptr++);
+    y_vreg_k3_k3.v = _mm_loaddup_pd((double *) y_k3_k3_ptr++);
+    x_0k_1k_ptr   += inc;
+    x_2k_3k_ptr   += inc;
+    fsm_vreg_00_10.v += x_vreg_0k_1k.v * y_vreg_k0_k0.v;
+    fsm_vreg_01_11.v += x_vreg_0k_1k.v * y_vreg_k1_k1.v;
+    fsm_vreg_02_12.v += x_vreg_0k_1k.v * y_vreg_k2_k2.v;
+    fsm_vreg_03_13.v += x_vreg_0k_1k.v * y_vreg_k3_k3.v;
+    fsm_vreg_20_30.v += x_vreg_2k_3k.v * y_vreg_k0_k0.v;
+    fsm_vreg_21_31.v += x_vreg_2k_3k.v * y_vreg_k1_k1.v;
+    fsm_vreg_22_32.v += x_vreg_2k_3k.v * y_vreg_k2_k2.v;
+    fsm_vreg_23_33.v += x_vreg_2k_3k.v * y_vreg_k3_k3.v;
   }
 
-  fsm[0]       = fsm_reg_00;
-  fsm[inc]     = fsm_reg_01;
-  fsm[2*inc]   = fsm_reg_02;
-  fsm[3*inc]   = fsm_reg_03;
-  fsm[1]       = fsm_reg_10;
-  fsm[1+inc]   = fsm_reg_11;
-  fsm[1+2*inc] = fsm_reg_12;
-  fsm[1+3*inc] = fsm_reg_13;
-  fsm[2]       = fsm_reg_20;
-  fsm[2+inc]   = fsm_reg_21;
-  fsm[2+2*inc] = fsm_reg_22;
-  fsm[2+3*inc] = fsm_reg_23;
-  fsm[3]       = fsm_reg_30;
-  fsm[3+inc]   = fsm_reg_31;
-  fsm[3+2*inc] = fsm_reg_32;
-  fsm[3+3*inc] = fsm_reg_33;
+  fsm[0]       = fsm_vreg_00_10.d[0];
+  fsm[inc]     = fsm_vreg_01_11.d[0];
+  fsm[2*inc]   = fsm_vreg_02_12.d[0];
+  fsm[3*inc]   = fsm_vreg_03_13.d[0];
+  fsm[1]       = fsm_vreg_00_10.d[1];
+  fsm[1+inc]   = fsm_vreg_01_11.d[1];
+  fsm[1+2*inc] = fsm_vreg_02_12.d[1];
+  fsm[1+3*inc] = fsm_vreg_03_13.d[1];
+  fsm[2]       = fsm_vreg_20_30.d[0];
+  fsm[2+inc]   = fsm_vreg_21_31.d[0];
+  fsm[2+2*inc] = fsm_vreg_22_32.d[0];
+  fsm[2+3*inc] = fsm_vreg_23_33.d[0];
+  fsm[3]       = fsm_vreg_20_30.d[1];
+  fsm[3+inc]   = fsm_vreg_21_31.d[1];
+  fsm[3+2*inc] = fsm_vreg_22_32.d[1];
+  fsm[3+3*inc] = fsm_vreg_23_33.d[1];
 }
 
 /* 8 rows of x multiply 1 column of y */
