@@ -243,9 +243,9 @@ static void mult4x4_256 (int K, int inc, double *x, double *y, double * restrict
 
   register double *x_0k_1k_2k_3k_ptr = &x[0];
   register double *y_k0_k0_k0_k0_ptr = &y[0];
-  register double *y_k1_k1_k1_k1_ptr = &y[inc];
-  register double *y_k2_k2_k2_k2_ptr = &y[2*inc];
-  register double *y_k3_k3_k3_k3_ptr = &y[3*inc];
+//  register double *y_k1_k1_k1_k1_ptr = &y[inc];
+//  register double *y_k2_k2_k2_k2_ptr = &y[2*inc];
+//  register double *y_k3_k3_k3_k3_ptr = &y[3*inc];
 
   for(int k = 0; k < K; ++k)
   {
@@ -255,10 +255,11 @@ static void mult4x4_256 (int K, int inc, double *x, double *y, double * restrict
 //    y_vreg_k1_k1_k1_k1.v = _mm256_broadcast_sd((double *) y_k1_k1_k1_k1_ptr++);
 //    y_vreg_k2_k2_k2_k2.v = _mm256_broadcast_sd((double *) y_k2_k2_k2_k2_ptr++);
 //    y_vreg_k3_k3_k3_k3.v = _mm256_broadcast_sd((double *) y_k3_k3_k3_k3_ptr++);
-    y_vreg_k0_k0_k0_k0.v = _mm256_set1_pd(*y_k0_k0_k0_k0_ptr++);
-    y_vreg_k1_k1_k1_k1.v = _mm256_set1_pd(*y_k1_k1_k1_k1_ptr++);
-    y_vreg_k2_k2_k2_k2.v = _mm256_set1_pd(*y_k2_k2_k2_k2_ptr++);
-    y_vreg_k3_k3_k3_k3.v = _mm256_set1_pd(*y_k3_k3_k3_k3_ptr++);
+    y_vreg_k0_k0_k0_k0.v = _mm256_set1_pd(*y_k0_k0_k0_k0_ptr);
+    y_vreg_k1_k1_k1_k1.v = _mm256_set1_pd(*(y_k0_k0_k0_k0_ptr+1));
+    y_vreg_k2_k2_k2_k2.v = _mm256_set1_pd(*(y_k0_k0_k0_k0_ptr+2));
+    y_vreg_k3_k3_k3_k3.v = _mm256_set1_pd(*(y_k0_k0_k0_k0_ptr+3));
+    y_k0_k0_k0_k0_ptr += 4;
     fsm_vreg_00_10_20_30.v += x_vreg_0k_1k_2k_3k.v * y_vreg_k0_k0_k0_k0.v;
     fsm_vreg_01_11_21_31.v += x_vreg_0k_1k_2k_3k.v * y_vreg_k1_k1_k1_k1.v;
     fsm_vreg_02_12_22_32.v += x_vreg_0k_1k_2k_3k.v * y_vreg_k2_k2_k2_k2.v;
@@ -398,7 +399,7 @@ static void change_layout_a (int K, int inc, double* a, double* ca)
 
 static void change_layout_b (int K, int inc, double* b, double* cb)
 {
-  double *b0_ptr = &b[0],       *b1_ptr = &b[inc],
+  double *b0_ptr = &b[0],     *b1_ptr = &b[inc],
          *b2_ptr = &b[2*inc], *b3_ptr = &b[3*inc];
   for(int i = 0; i < K; ++i){  /* loop over rows of B */
     *cb++ = *b0_ptr++;
@@ -418,6 +419,7 @@ static void do_block (int lda, int M, int N, int K, double* A, double* B, double
   /* For each row i of A */
   for (int j = 0; j < N; j+=4)
   {
+    change_layout_b(K, lda, B+j*lda, &ConB[K*j]);
     /* For each column j of B */ 
     for (int i = 0; i < M; i+=4) 
     {
@@ -425,7 +427,7 @@ static void do_block (int lda, int M, int N, int K, double* A, double* B, double
 //      mult1x4(K, lda, A+i, B+j*lda, C+i+j*lda);
       if(j == 0) change_layout_a(K, lda, A+i, &ConA[i*K]);
 //      mult4x4(K, lda, &ConA[i*K], B+j*lda, C+i+j*lda);
-      mult4x4_256(K, lda, &ConA[i*K], B+j*lda, C+i+j*lda);
+      mult4x4_256(K, lda, &ConA[i*K], &ConB[K*j], C+i+j*lda);
 //      mult1x8(K, lda, A+i, B+j*lda, C+i+j*lda);
     }
   }
