@@ -213,6 +213,27 @@ typedef union
   double d[4];
 } v4df_t;
 
+/* 1 row of x multiplies 4 columns of y , fcm is the continuous version of C */
+static void mult1x4_256 (int K, int inc, double *x, double *y, double *fcm)
+{
+
+}
+
+static void mult3x3_256 (int K, int inc, double *x, double *y, double * restrict fsm)
+{
+  /* For each row i of A */
+  for (int i = 0; i < 3; ++i)
+    /* For each column j of B */
+    for (int j = 0; j < 3; ++j)
+    {
+      /* Compute C(i,j) */
+      double cij = fsm[i+j*inc];
+      for (int k = 0; k < K; ++k)
+        cij += x[i+k*inc] * y[k+j*inc];
+      fsm[i+j*inc] = cij;
+    } 
+}
+
 /* 4 row of x multiplies 4 columns of y with AVX 256 registers */
 static void mult4x4_256 (int K, int inc, double *x, double *y, double * restrict fsm)
 {
@@ -384,7 +405,7 @@ static void mult1x8 (int K, int inc, double *x, double *y, double *ecm)
   ecm[7*inc] = ecm_reg_7;
 }
 
-static void change_layout_a (int K, int inc, double* a, double* ca)
+static void cmem4xk_a (int K, int inc, double* a, double* ca)
 {
   for(int j = 0; j < K; ++j){  /* loop over columns of A */
     double 
@@ -397,7 +418,7 @@ static void change_layout_a (int K, int inc, double* a, double* ca)
   }
 }
 
-static void change_layout_b (int K, int inc, double* b, double* cb)
+static void cmemkx4_b (int K, int inc, double* b, double* cb)
 {
   double *b0_ptr = &b[0],     *b1_ptr = &b[inc],
          *b2_ptr = &b[2*inc], *b3_ptr = &b[3*inc];
@@ -412,24 +433,89 @@ static void change_layout_b (int K, int inc, double* b, double* cb)
 /* This auxiliary subroutine performs a smaller dgemm operation
  *  C := C + A * B
  * where C is M-by-N, A is M-by-K, and B is K-by-N. */
-static void do_block (int lda, int M, int N, int K, double* A, double* B, double* C)
+static void do_block (int lda, int Mr, int Nr, int Kr, double* A, double* B, double* C)
 {
-  double ConA[M*K];
-  double ConB[K*N];
-  /* For each row i of A */
+
+  /* Mr, Nr, Kr are the raw number of range {1, 31, 33, 63, 65, 95, 97, 127, 129, 255} since we set BLOCK_SIZE as 256 */
+//  printf("Mr=%d, Nr=%d, Kr=%d\n", Mr, Nr, Kr);
+  int M = (Mr/4)*4;
+  int m = Mr%4; // m is 1 or 3
+  int N = (Nr/4)*4;
+  int n = Nr%4; // n is 1 or 3
+  int K = Kr; // K in mult4x4 increases by 1 each time, therefore K does not need to be aligned by 4 elements. But we do need to consider the alignment if unroll the loop in mult4x4.
+
+  double ConA[Mr*Kr];
+  double ConB[Kr*Nr];
+  /* For 4 columns j of B */
   for (int j = 0; j < N; j+=4)
   {
-    change_layout_b(K, lda, B+j*lda, &ConB[K*j]);
-    /* For each column j of B */ 
+    cmemkx4_b(K, lda, B+j*lda, &ConB[K*j]);
+    /* For 4 rows i of A */ 
     for (int i = 0; i < M; i+=4) 
     {
       /* Compute C(i,j) */
-//      mult1x4(K, lda, A+i, B+j*lda, C+i+j*lda);
-      if(j == 0) change_layout_a(K, lda, A+i, &ConA[i*K]);
-//      mult4x4(K, lda, &ConA[i*K], B+j*lda, C+i+j*lda);
+      if(j == 0) cmem4xk_a(K, lda, A+i, &ConA[i*K]);
       mult4x4_256(K, lda, &ConA[i*K], &ConB[K*j], C+i+j*lda);
-//      mult1x8(K, lda, A+i, B+j*lda, C+i+j*lda);
     }
+  }
+
+  if(m == 1) {
+    /* Calculate last column of C */
+    for (int i = 0; i < M; ++i)
+    {
+      double ciz = C[i+(Nr-1)*lda];
+      for (int k = 0; k < K; ++k)
+        ciz += A[i+k*lda] * B[k+(Nr-1)*lda];
+      C[i+(Nr-1)*lda] = ciz;
+    }
+   /* Calculate last row of C */
+    for (int j = 0; j < N; ++j)
+    {
+      double czj = C[(Mr-1)+j*lda];
+      for (int k = 0; k < K; ++k)
+        czj += A[Mr-1+k*lda] * B[k+j*lda];
+      C[Mr-1+j*lda] = czj;
+    }
+    /* Calculate the element on the intersection between last row and column of C */
+    double czz = C[(Mr-1)+(Nr-1)*lda];
+    for (int k = 0; k < K; ++k)
+      czz += A[Mr-1+k*lda] * B[k+(Nr-1)*lda];
+    C[Mr-1+(Nr-1)*lda] = czz;
+  } else if(m == 3) {
+    /* Calculate last 3 columns of C */
+    for (int i = 0; i < M; ++i)
+    {
+      double cil1 = C[i+(Nr-1)*lda];
+      double cil2 = C[i+(Nr-2)*lda];
+      double cil3 = C[i+(Nr-3)*lda];
+      for (int k = 0; k < K; ++k)
+      {
+        cil1 += A[i+k*lda] * B[k+(Nr-1)*lda];
+        cil2 += A[i+k*lda] * B[k+(Nr-2)*lda];
+        cil3 += A[i+k*lda] * B[k+(Nr-3)*lda];
+      }
+      C[i+(Nr-1)*lda] = cil1;
+      C[i+(Nr-2)*lda] = cil2;
+      C[i+(Nr-3)*lda] = cil3;
+    }
+   /* Calculate last 3 rows of C */
+    for (int j = 0; j < N; ++j)
+    {
+      double cl1j = C[(Mr-1)+j*lda];
+      double cl2j = C[(Mr-2)+j*lda];
+      double cl3j = C[(Mr-3)+j*lda];
+      for (int k = 0; k < K; ++k)
+      {
+        cl1j += A[Mr-1+k*lda] * B[k+j*lda];
+        cl2j += A[Mr-2+k*lda] * B[k+j*lda];
+        cl3j += A[Mr-3+k*lda] * B[k+j*lda];
+      }
+      C[Mr-1+j*lda] = cl1j;
+      C[Mr-2+j*lda] = cl2j;
+      C[Mr-3+j*lda] = cl3j;
+    }
+    /* Calculate the elements in 3x3 matrix in intersection between last row and column of C */
+    mult3x3_256(K, lda, &A[Mr-3], &B[lda*(Nr-3)], &C[(Mr-3)+(Nr-3)*lda]);
   }
 }
 
