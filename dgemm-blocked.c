@@ -12,6 +12,7 @@ MKLROOT = /opt/intel/composer_xe_2013.1.117/mkl
 LDLIBS = -lrt -Wl,--start-group $(MKLROOT)/lib/intel64/libmkl_intel_lp64.a $(MKLROOT)/lib/intel64/libmkl_sequential.a $(MKLROOT)/lib/intel64/libmkl_core.a -Wl,--end-group -lpthread -lm
 
 */
+#include<stdio.h>
 
 const char* dgemm_desc = "Simple blocked dgemm.";
 
@@ -204,6 +205,86 @@ static void mult4x4 (int K, int inc, double *x, double *y, double *fsm)
   fsm[3+3*inc] = fsm_vreg_23_33.d[1];
 }
 
+#include<immintrin.h> // AVX intrinsics
+
+typedef union
+{
+  __m256d v;
+  double d[4];
+} v4df_t;
+
+/* 4 row of x multiplies 4 columns of y with AVX 256 registers */
+static void mult4x4_256 (int K, int inc, double *x, double *y, double * restrict fsm)
+{
+  register v4df_t fsm_vreg_00_10_20_30;
+  register v4df_t fsm_vreg_01_11_21_31;
+  register v4df_t fsm_vreg_02_12_22_32;
+  register v4df_t fsm_vreg_03_13_23_33;
+  fsm_vreg_00_10_20_30.v = _mm256_setzero_pd();
+  fsm_vreg_01_11_21_31.v = _mm256_setzero_pd();
+  fsm_vreg_02_12_22_32.v = _mm256_setzero_pd();
+  fsm_vreg_03_13_23_33.v = _mm256_setzero_pd();
+
+  fsm_vreg_00_10_20_30.v = _mm256_loadu_pd((double *) &fsm[0]);
+  fsm_vreg_01_11_21_31.v = _mm256_loadu_pd((double *) &fsm[inc]);
+  fsm_vreg_02_12_22_32.v = _mm256_loadu_pd((double *) &fsm[2*inc]);
+  fsm_vreg_03_13_23_33.v = _mm256_loadu_pd((double *) &fsm[3*inc]);
+
+  v4df_t x_vreg_0k_1k_2k_3k;
+  v4df_t y_vreg_k0_k0_k0_k0;
+  v4df_t y_vreg_k1_k1_k1_k1;
+  v4df_t y_vreg_k2_k2_k2_k2;
+  v4df_t y_vreg_k3_k3_k3_k3;
+  x_vreg_0k_1k_2k_3k.v = _mm256_setzero_pd();
+  y_vreg_k0_k0_k0_k0.v = _mm256_setzero_pd();
+  y_vreg_k1_k1_k1_k1.v = _mm256_setzero_pd();
+  y_vreg_k2_k2_k2_k2.v = _mm256_setzero_pd();
+  y_vreg_k3_k3_k3_k3.v = _mm256_setzero_pd();
+
+  register double *x_0k_1k_2k_3k_ptr = &x[0];
+  register double *y_k0_k0_k0_k0_ptr = &y[0];
+  register double *y_k1_k1_k1_k1_ptr = &y[inc];
+  register double *y_k2_k2_k2_k2_ptr = &y[2*inc];
+  register double *y_k3_k3_k3_k3_ptr = &y[3*inc];
+
+  for(int k = 0; k < K; ++k)
+  {
+    x_vreg_0k_1k_2k_3k.v = _mm256_loadu_pd((double *) x_0k_1k_2k_3k_ptr);
+//    y_vreg_k0_k0_k0_k0.v = _mm256_broadcast_sd((double *) y_k0_k0_k0_k0_ptr++);
+//    y_vreg_k1_k1_k1_k1.v = _mm256_broadcast_sd((double *) y_k1_k1_k1_k1_ptr++);
+//    y_vreg_k2_k2_k2_k2.v = _mm256_broadcast_sd((double *) y_k2_k2_k2_k2_ptr++);
+//    y_vreg_k3_k3_k3_k3.v = _mm256_broadcast_sd((double *) y_k3_k3_k3_k3_ptr++);
+    y_vreg_k0_k0_k0_k0.v = _mm256_set1_pd(*y_k0_k0_k0_k0_ptr++);
+    y_vreg_k1_k1_k1_k1.v = _mm256_set1_pd(*y_k1_k1_k1_k1_ptr++);
+    y_vreg_k2_k2_k2_k2.v = _mm256_set1_pd(*y_k2_k2_k2_k2_ptr++);
+    y_vreg_k3_k3_k3_k3.v = _mm256_set1_pd(*y_k3_k3_k3_k3_ptr++);
+
+    x_0k_1k_2k_3k_ptr   += inc;
+    fsm_vreg_00_10_20_30.v += x_vreg_0k_1k_2k_3k.v * y_vreg_k0_k0_k0_k0.v;
+    fsm_vreg_01_11_21_31.v += x_vreg_0k_1k_2k_3k.v * y_vreg_k1_k1_k1_k1.v;
+    fsm_vreg_02_12_22_32.v += x_vreg_0k_1k_2k_3k.v * y_vreg_k2_k2_k2_k2.v;
+    fsm_vreg_03_13_23_33.v += x_vreg_0k_1k_2k_3k.v * y_vreg_k3_k3_k3_k3.v;
+  }
+
+  fsm[0]       = fsm_vreg_00_10_20_30.d[0];
+  fsm[1]       = fsm_vreg_00_10_20_30.d[1];
+  fsm[2]       = fsm_vreg_00_10_20_30.d[2];
+  fsm[3]       = fsm_vreg_00_10_20_30.d[3];
+  fsm[inc]     = fsm_vreg_01_11_21_31.d[0];
+  fsm[1+inc]   = fsm_vreg_01_11_21_31.d[1];
+  fsm[2+inc]   = fsm_vreg_01_11_21_31.d[2];
+  fsm[3+inc]   = fsm_vreg_01_11_21_31.d[3];
+  fsm[2*inc]   = fsm_vreg_02_12_22_32.d[0];
+  fsm[1+2*inc] = fsm_vreg_02_12_22_32.d[1];
+  fsm[2+2*inc] = fsm_vreg_02_12_22_32.d[2];
+  fsm[3+2*inc] = fsm_vreg_02_12_22_32.d[3];
+  fsm[3*inc]   = fsm_vreg_03_13_23_33.d[0];
+  fsm[1+3*inc] = fsm_vreg_03_13_23_33.d[1];
+  fsm[2+3*inc] = fsm_vreg_03_13_23_33.d[2];
+  fsm[3+3*inc] = fsm_vreg_03_13_23_33.d[3];
+
+}
+
 /* 8 rows of x multiply 1 column of y */
 static void mult8x1 (int K, int inc, double *x, double *y, double *erm)
 {
@@ -308,6 +389,7 @@ static void mult1x8 (int K, int inc, double *x, double *y, double *ecm)
  * where C is M-by-N, A is M-by-K, and B is K-by-N. */
 static void do_block (int lda, int M, int N, int K, double* A, double* B, double* C)
 {
+
   /* For each row i of A */
   for (int j = 0; j < N; j+=4)
     /* For each column j of B */ 
@@ -315,7 +397,8 @@ static void do_block (int lda, int M, int N, int K, double* A, double* B, double
     {
       /* Compute C(i,j) */
 //      mult1x4(K, lda, A+i, B+j*lda, C+i+j*lda);
-      mult4x4(K, lda, A+i, B+j*lda, C+i+j*lda);
+//      mult4x4(K, lda, A+i, B+j*lda, C+i+j*lda);
+      mult4x4_256(K, lda, A+i, B+j*lda, C+i+j*lda);
 //      mult1x8(K, lda, A+i, B+j*lda, C+i+j*lda);
     }
 }
