@@ -175,8 +175,8 @@ static void mult4x4 (int K, int inc, double *x, double *y, double *fsm)
     y_vreg_k1_k1.v = _mm_loaddup_pd((double *) y_k1_k1_ptr++);
     y_vreg_k2_k2.v = _mm_loaddup_pd((double *) y_k2_k2_ptr++);
     y_vreg_k3_k3.v = _mm_loaddup_pd((double *) y_k3_k3_ptr++);
-    x_0k_1k_ptr   += inc;
-    x_2k_3k_ptr   += inc;
+    x_0k_1k_ptr   += 4;
+    x_2k_3k_ptr   += 4;
     fsm_vreg_00_10.v += x_vreg_0k_1k.v * y_vreg_k0_k0.v;
     fsm_vreg_01_11.v += x_vreg_0k_1k.v * y_vreg_k1_k1.v;
     fsm_vreg_02_12.v += x_vreg_0k_1k.v * y_vreg_k2_k2.v;
@@ -250,6 +250,7 @@ static void mult4x4_256 (int K, int inc, double *x, double *y, double * restrict
   for(int k = 0; k < K; ++k)
   {
     x_vreg_0k_1k_2k_3k.v = _mm256_loadu_pd((double *) x_0k_1k_2k_3k_ptr);
+    x_0k_1k_2k_3k_ptr   += 4;
 //    y_vreg_k0_k0_k0_k0.v = _mm256_broadcast_sd((double *) y_k0_k0_k0_k0_ptr++);
 //    y_vreg_k1_k1_k1_k1.v = _mm256_broadcast_sd((double *) y_k1_k1_k1_k1_ptr++);
 //    y_vreg_k2_k2_k2_k2.v = _mm256_broadcast_sd((double *) y_k2_k2_k2_k2_ptr++);
@@ -259,7 +260,6 @@ static void mult4x4_256 (int K, int inc, double *x, double *y, double * restrict
     y_vreg_k2_k2_k2_k2.v = _mm256_set1_pd(*y_k2_k2_k2_k2_ptr++);
     y_vreg_k3_k3_k3_k3.v = _mm256_set1_pd(*y_k3_k3_k3_k3_ptr++);
 
-    x_0k_1k_2k_3k_ptr   += inc;
     fsm_vreg_00_10_20_30.v += x_vreg_0k_1k_2k_3k.v * y_vreg_k0_k0_k0_k0.v;
     fsm_vreg_01_11_21_31.v += x_vreg_0k_1k_2k_3k.v * y_vreg_k1_k1_k1_k1.v;
     fsm_vreg_02_12_22_32.v += x_vreg_0k_1k_2k_3k.v * y_vreg_k2_k2_k2_k2.v;
@@ -384,12 +384,25 @@ static void mult1x8 (int K, int inc, double *x, double *y, double *ecm)
   ecm[7*inc] = ecm_reg_7;
 }
 
+static void change_layout (int K, int inc, double* a, double* ca)
+{
+  for(int j = 0; j < K; ++j){  /* loop over columns of A */
+    double 
+      *a_ptr = &a[j*inc];
+
+    *ca++ = *a_ptr;
+    *ca++ = *(a_ptr+1);
+    *ca++ = *(a_ptr+2);
+    *ca++ = *(a_ptr+3);
+  }
+}
+
 /* This auxiliary subroutine performs a smaller dgemm operation
  *  C := C + A * B
  * where C is M-by-N, A is M-by-K, and B is K-by-N. */
 static void do_block (int lda, int M, int N, int K, double* A, double* B, double* C)
 {
-
+  double ConA[M*K];
   /* For each row i of A */
   for (int j = 0; j < N; j+=4)
     /* For each column j of B */ 
@@ -397,8 +410,9 @@ static void do_block (int lda, int M, int N, int K, double* A, double* B, double
     {
       /* Compute C(i,j) */
 //      mult1x4(K, lda, A+i, B+j*lda, C+i+j*lda);
-//      mult4x4(K, lda, A+i, B+j*lda, C+i+j*lda);
-      mult4x4_256(K, lda, A+i, B+j*lda, C+i+j*lda);
+      if(j == 0) change_layout(K, lda, A+i, &ConA[i*K]);
+//      mult4x4(K, lda, &ConA[i*K], B+j*lda, C+i+j*lda);
+      mult4x4_256(K, lda, &ConA[i*K], B+j*lda, C+i+j*lda);
 //      mult1x8(K, lda, A+i, B+j*lda, C+i+j*lda);
     }
 }
@@ -410,11 +424,11 @@ static void do_block (int lda, int M, int N, int K, double* A, double* B, double
 void square_dgemm (int lda, double* A, double* B, double* C)
 {
   /* For each block-row of A */ 
-  for (int i = 0; i < lda; i += BLOCK_SIZE)
+  for (int j = 0; j < lda; j += BLOCK_SIZE)
     /* For each block-column of B */
-    for (int j = 0; j < lda; j += BLOCK_SIZE)
+    for (int k = 0; k < lda; k += BLOCK_SIZE)
       /* Accumulate block dgemms into block of C */
-      for (int k = 0; k < lda; k += BLOCK_SIZE)
+      for (int i = 0; i < lda; i += BLOCK_SIZE)
       {
 	/* Correct block dimensions if block "goes off edge of" the matrix */
 	int M = min (BLOCK_SIZE, lda-i);
