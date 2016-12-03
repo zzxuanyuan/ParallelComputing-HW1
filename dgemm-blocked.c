@@ -222,6 +222,7 @@ static void mult1x1_256 (int K, int inc, double *x, double *y, double *fcm)
 }
 
 /* 1 row of x multiplies 4 columns of y , fcm is the continuous version of C */
+/*
 static void mult1x4_256 (int K, int inc, double *x, double *y, double *fcm)
 {
   mult1x1_256 (K, inc, x, y, fcm);
@@ -229,7 +230,7 @@ static void mult1x4_256 (int K, int inc, double *x, double *y, double *fcm)
   mult1x1_256 (K, inc, x, y+2*inc, fcm+2*inc);
   mult1x1_256 (K, inc, x, y+3*inc, fcm+3*inc);
 }
-/*
+
 static void mult3x4_256 (int K, int inc, double *x, double *y, double *fcm)
 {
   mult1x4_256 (K, inc, x, y, fcm);
@@ -251,6 +252,67 @@ static void mult3x3_256 (int K, int inc, double *x, double *y, double * restrict
         cij += x[i+k*inc] * y[k+j*inc];
       fsm[i+j*inc] = cij;
     } 
+}
+
+/* 1 row of x multiplies 4 columns of y with AVX 256 registers */
+static void mult1x4_256 (int K, int inc, double *x, double *y, double * restrict fsm)
+{
+  register v4df_t fsm_vreg_00;
+  register v4df_t fsm_vreg_01;
+  register v4df_t fsm_vreg_02;
+  register v4df_t fsm_vreg_03;
+  fsm_vreg_00.v = _mm256_setzero_pd();
+  fsm_vreg_01.v = _mm256_setzero_pd();
+  fsm_vreg_02.v = _mm256_setzero_pd();
+  fsm_vreg_03.v = _mm256_setzero_pd();
+
+  fsm_vreg_00.v = _mm256_loadu_pd((double *) &fsm[0]);
+  fsm_vreg_01.v = _mm256_loadu_pd((double *) &fsm[inc]);
+  fsm_vreg_02.v = _mm256_loadu_pd((double *) &fsm[2*inc]);
+  fsm_vreg_03.v = _mm256_loadu_pd((double *) &fsm[3*inc]);
+
+  v4df_t x_vreg_0k;
+  v4df_t y_vreg_k0_k0_k0_k0;
+  v4df_t y_vreg_k1_k1_k1_k1;
+  v4df_t y_vreg_k2_k2_k2_k2;
+  v4df_t y_vreg_k3_k3_k3_k3;
+  x_vreg_0k.v = _mm256_setzero_pd();
+  y_vreg_k0_k0_k0_k0.v = _mm256_setzero_pd();
+  y_vreg_k1_k1_k1_k1.v = _mm256_setzero_pd();
+  y_vreg_k2_k2_k2_k2.v = _mm256_setzero_pd();
+  y_vreg_k3_k3_k3_k3.v = _mm256_setzero_pd();
+
+  register double *x_0k_ptr = &x[0];
+  register double *y_k0_k0_k0_k0_ptr = &y[0];
+
+  for(int k = 0; k < K; ++k)
+  {
+    x_vreg_0k.v = _mm256_loadu_pd((double *) x_0k_ptr);
+    x_0k_ptr += 4;
+    y_vreg_k0_k0_k0_k0.v = _mm256_set1_pd(*y_k0_k0_k0_k0_ptr);
+    y_vreg_k1_k1_k1_k1.v = _mm256_set1_pd(*(y_k0_k0_k0_k0_ptr+1));
+    y_vreg_k2_k2_k2_k2.v = _mm256_set1_pd(*(y_k0_k0_k0_k0_ptr+2));
+    y_vreg_k3_k3_k3_k3.v = _mm256_set1_pd(*(y_k0_k0_k0_k0_ptr+3));
+    y_k0_k0_k0_k0_ptr += 4;
+    fsm_vreg_00.v += x_vreg_0k.v * y_vreg_k0_k0_k0_k0.v;
+    fsm_vreg_01.v += x_vreg_0k.v * y_vreg_k1_k1_k1_k1.v;
+    fsm_vreg_02.v += x_vreg_0k.v * y_vreg_k2_k2_k2_k2.v;
+    fsm_vreg_03.v += x_vreg_0k.v * y_vreg_k3_k3_k3_k3.v;
+  }
+
+  fsm[0]       = fsm_vreg_00.d[0];
+  fsm[1]       = fsm_vreg_00.d[1];
+  fsm[2]       = fsm_vreg_00.d[2];
+  fsm[inc]     = fsm_vreg_01.d[0];
+  fsm[1+inc]   = fsm_vreg_01.d[1];
+  fsm[2+inc]   = fsm_vreg_01.d[2];
+  fsm[2*inc]   = fsm_vreg_02.d[0];
+  fsm[1+2*inc] = fsm_vreg_02.d[1];
+  fsm[2+2*inc] = fsm_vreg_02.d[2];
+  fsm[3*inc]   = fsm_vreg_03.d[0];
+  fsm[1+3*inc] = fsm_vreg_03.d[1];
+  fsm[2+3*inc] = fsm_vreg_03.d[2];
+
 }
 
 /* 3 row of x multiplies 4 columns of y with AVX 256 registers */
@@ -345,18 +407,11 @@ static void mult4x4_256 (int K, int inc, double *x, double *y, double * restrict
 
   register double *x_0k_1k_2k_3k_ptr = &x[0];
   register double *y_k0_k0_k0_k0_ptr = &y[0];
-//  register double *y_k1_k1_k1_k1_ptr = &y[inc];
-//  register double *y_k2_k2_k2_k2_ptr = &y[2*inc];
-//  register double *y_k3_k3_k3_k3_ptr = &y[3*inc];
 
   for(int k = 0; k < K; ++k)
   {
     x_vreg_0k_1k_2k_3k.v = _mm256_loadu_pd((double *) x_0k_1k_2k_3k_ptr);
     x_0k_1k_2k_3k_ptr += 4;
-//    y_vreg_k0_k0_k0_k0.v = _mm256_broadcast_sd((double *) y_k0_k0_k0_k0_ptr++);
-//    y_vreg_k1_k1_k1_k1.v = _mm256_broadcast_sd((double *) y_k1_k1_k1_k1_ptr++);
-//    y_vreg_k2_k2_k2_k2.v = _mm256_broadcast_sd((double *) y_k2_k2_k2_k2_ptr++);
-//    y_vreg_k3_k3_k3_k3.v = _mm256_broadcast_sd((double *) y_k3_k3_k3_k3_ptr++);
     y_vreg_k0_k0_k0_k0.v = _mm256_set1_pd(*y_k0_k0_k0_k0_ptr);
     y_vreg_k1_k1_k1_k1.v = _mm256_set1_pd(*(y_k0_k0_k0_k0_ptr+1));
     y_vreg_k2_k2_k2_k2.v = _mm256_set1_pd(*(y_k0_k0_k0_k0_ptr+2));
@@ -486,6 +541,19 @@ static void mult1x8 (int K, int inc, double *x, double *y, double *ecm)
   ecm[7*inc] = ecm_reg_7;
 }
 
+static void cmem1xk_a (int K, int inc, double* a, double* ca)
+{
+  for(int j = 0; j < K; ++j){  /* loop over columns of A */
+    double 
+      *a_ptr = &a[j*inc];
+
+    *ca++ = *a_ptr;
+    *ca++ = 0;
+    *ca++ = 0;
+    *ca++ = 0;
+  }
+}
+
 static void cmem3xk_a (int K, int inc, double* a, double* ca)
 {
   for(int j = 0; j < K; ++j){  /* loop over columns of A */
@@ -566,10 +634,8 @@ static void do_block (int lda, int Mr, int Nr, int Kr, double* A, double* B, dou
       mult4x4_256(K, lda, &ConA[i*K], &ConB[K*j], C+i+j*lda);
     }
     if (m == 1) {
-      mult1x1_256(K, lda, &A[Mr-1], &B[j*lda], C+Mr-1+j*lda);
-      mult1x1_256(K, lda, &A[Mr-1], &B[(j+1)*lda], C+Mr-1+(j+1)*lda);
-      mult1x1_256(K, lda, &A[Mr-1], &B[(j+2)*lda], C+Mr-1+(j+2)*lda);
-      mult1x1_256(K, lda, &A[Mr-1], &B[(j+3)*lda], C+Mr-1+(j+3)*lda);
+      cmem1xk_a(K, lda, A+Mr-1, &ConA[(Mc-4)*K]);
+      mult1x4_256(K, lda, &ConA[(Mc-4)*K], &ConB[K*j], C+Mr-1+j*lda);
     } else if (m == 3) {
       cmem3xk_a(K, lda, A+Mr-3, &ConA[(Mc-4)*K]);
       mult3x4_256(K, lda, &ConA[(Mc-4)*K], &ConB[K*j], C+Mr-3+j*lda);
