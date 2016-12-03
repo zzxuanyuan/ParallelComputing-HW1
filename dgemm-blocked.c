@@ -6,7 +6,7 @@ COMPILER= gnu
     Please include All compiler flags and libraries as you want them run. You can simply copy this over from the Makefile's first few lines
  
 CC = cc
-OPT = -O3
+OPT = -O3 -mavx
 CFLAGS = -Wall -std=gnu99 $(OPT)
 MKLROOT = /opt/intel/composer_xe_2013.1.117/mkl
 LDLIBS = -lrt -Wl,--start-group $(MKLROOT)/lib/intel64/libmkl_intel_lp64.a $(MKLROOT)/lib/intel64/libmkl_sequential.a $(MKLROOT)/lib/intel64/libmkl_core.a -Wl,--end-group -lpthread -lm
@@ -213,11 +213,30 @@ typedef union
   double d[4];
 } v4df_t;
 
+static void mult1x1_256 (int K, int inc, double *x, double *y, double *fcm)
+{
+  double c = fcm[0];
+  for (int k = 0; k < K; ++k)
+    c += x[k*inc] * y[k];
+  fcm[0] = c;
+}
+
 /* 1 row of x multiplies 4 columns of y , fcm is the continuous version of C */
 static void mult1x4_256 (int K, int inc, double *x, double *y, double *fcm)
 {
-
+  mult1x1_256 (K, inc, x, y, fcm);
+  mult1x1_256 (K, inc, x, y+inc, fcm+inc);
+  mult1x1_256 (K, inc, x, y+2*inc, fcm+2*inc);
+  mult1x1_256 (K, inc, x, y+3*inc, fcm+3*inc);
 }
+/*
+static void mult3x4_256 (int K, int inc, double *x, double *y, double *fcm)
+{
+  mult1x4_256 (K, inc, x, y, fcm);
+  mult1x4_256 (K, inc, x+1, y, fcm+1);
+  mult1x4_256 (K, inc, x+2, y, fcm+2);
+}
+*/
 
 static void mult3x3_256 (int K, int inc, double *x, double *y, double * restrict fsm)
 {
@@ -233,6 +252,68 @@ static void mult3x3_256 (int K, int inc, double *x, double *y, double * restrict
       fsm[i+j*inc] = cij;
     } 
 }
+
+/* 3 row of x multiplies 4 columns of y with AVX 256 registers */
+static void mult3x4_256 (int K, int inc, double *x, double *y, double * restrict fsm)
+{
+  register v4df_t fsm_vreg_00_10_20;
+  register v4df_t fsm_vreg_01_11_21;
+  register v4df_t fsm_vreg_02_12_22;
+  register v4df_t fsm_vreg_03_13_23;
+  fsm_vreg_00_10_20.v = _mm256_setzero_pd();
+  fsm_vreg_01_11_21.v = _mm256_setzero_pd();
+  fsm_vreg_02_12_22.v = _mm256_setzero_pd();
+  fsm_vreg_03_13_23.v = _mm256_setzero_pd();
+
+  fsm_vreg_00_10_20.v = _mm256_loadu_pd((double *) &fsm[0]);
+  fsm_vreg_01_11_21.v = _mm256_loadu_pd((double *) &fsm[inc]);
+  fsm_vreg_02_12_22.v = _mm256_loadu_pd((double *) &fsm[2*inc]);
+  fsm_vreg_03_13_23.v = _mm256_loadu_pd((double *) &fsm[3*inc]);
+
+  v4df_t x_vreg_0k_1k_2k;
+  v4df_t y_vreg_k0_k0_k0_k0;
+  v4df_t y_vreg_k1_k1_k1_k1;
+  v4df_t y_vreg_k2_k2_k2_k2;
+  v4df_t y_vreg_k3_k3_k3_k3;
+  x_vreg_0k_1k_2k.v = _mm256_setzero_pd();
+  y_vreg_k0_k0_k0_k0.v = _mm256_setzero_pd();
+  y_vreg_k1_k1_k1_k1.v = _mm256_setzero_pd();
+  y_vreg_k2_k2_k2_k2.v = _mm256_setzero_pd();
+  y_vreg_k3_k3_k3_k3.v = _mm256_setzero_pd();
+
+  register double *x_0k_1k_2k_ptr = &x[0];
+  register double *y_k0_k0_k0_k0_ptr = &y[0];
+
+  for(int k = 0; k < K; ++k)
+  {
+    x_vreg_0k_1k_2k.v = _mm256_loadu_pd((double *) x_0k_1k_2k_ptr);
+    x_0k_1k_2k_ptr += 4;
+    y_vreg_k0_k0_k0_k0.v = _mm256_set1_pd(*y_k0_k0_k0_k0_ptr);
+    y_vreg_k1_k1_k1_k1.v = _mm256_set1_pd(*(y_k0_k0_k0_k0_ptr+1));
+    y_vreg_k2_k2_k2_k2.v = _mm256_set1_pd(*(y_k0_k0_k0_k0_ptr+2));
+    y_vreg_k3_k3_k3_k3.v = _mm256_set1_pd(*(y_k0_k0_k0_k0_ptr+3));
+    y_k0_k0_k0_k0_ptr += 4;
+    fsm_vreg_00_10_20.v += x_vreg_0k_1k_2k.v * y_vreg_k0_k0_k0_k0.v;
+    fsm_vreg_01_11_21.v += x_vreg_0k_1k_2k.v * y_vreg_k1_k1_k1_k1.v;
+    fsm_vreg_02_12_22.v += x_vreg_0k_1k_2k.v * y_vreg_k2_k2_k2_k2.v;
+    fsm_vreg_03_13_23.v += x_vreg_0k_1k_2k.v * y_vreg_k3_k3_k3_k3.v;
+  }
+
+  fsm[0]       = fsm_vreg_00_10_20.d[0];
+  fsm[1]       = fsm_vreg_00_10_20.d[1];
+  fsm[2]       = fsm_vreg_00_10_20.d[2];
+  fsm[inc]     = fsm_vreg_01_11_21.d[0];
+  fsm[1+inc]   = fsm_vreg_01_11_21.d[1];
+  fsm[2+inc]   = fsm_vreg_01_11_21.d[2];
+  fsm[2*inc]   = fsm_vreg_02_12_22.d[0];
+  fsm[1+2*inc] = fsm_vreg_02_12_22.d[1];
+  fsm[2+2*inc] = fsm_vreg_02_12_22.d[2];
+  fsm[3*inc]   = fsm_vreg_03_13_23.d[0];
+  fsm[1+3*inc] = fsm_vreg_03_13_23.d[1];
+  fsm[2+3*inc] = fsm_vreg_03_13_23.d[2];
+
+}
+
 
 /* 4 row of x multiplies 4 columns of y with AVX 256 registers */
 static void mult4x4_256 (int K, int inc, double *x, double *y, double * restrict fsm)
@@ -405,6 +486,20 @@ static void mult1x8 (int K, int inc, double *x, double *y, double *ecm)
   ecm[7*inc] = ecm_reg_7;
 }
 
+static void cmem3xk_a (int K, int inc, double* a, double* ca)
+{
+  for(int j = 0; j < K; ++j){  /* loop over columns of A */
+    double 
+      *a_ptr = &a[j*inc];
+
+    *ca++ = *a_ptr;
+    *ca++ = *(a_ptr+1);
+    *ca++ = *(a_ptr+2);
+    *ca++ = 0;
+  }
+}
+
+
 static void cmem4xk_a (int K, int inc, double* a, double* ca)
 {
   for(int j = 0; j < K; ++j){  /* loop over columns of A */
@@ -438,14 +533,26 @@ static void do_block (int lda, int Mr, int Nr, int Kr, double* A, double* B, dou
 
   /* Mr, Nr, Kr are the raw number of range {1, 31, 33, 63, 65, 95, 97, 127, 129, 255} since we set BLOCK_SIZE as 256 */
 //  printf("Mr=%d, Nr=%d, Kr=%d\n", Mr, Nr, Kr);
-  int M = (Mr/4)*4;
+  int M = Mr/4*4;
   int m = Mr%4; // m is 1 or 3
-  int N = (Nr/4)*4;
+  int N = Nr/4*4;
   int n = Nr%4; // n is 1 or 3
   int K = Kr; // K in mult4x4 increases by 1 each time, therefore K does not need to be aligned by 4 elements. But we do need to consider the alignment if unroll the loop in mult4x4.
-
-  double ConA[Mr*Kr];
-  double ConB[Kr*Nr];
+//  printf("M=%d,N=%d,K=%d\n",M,N,K);
+  int Mc;
+  int Nc;
+  if(!m) {
+    Mc = M;
+  } else {
+    Mc = M+4;
+  }
+  if(!n) {
+    Nc = N;
+  } else {
+    Nc = N+4;
+  }
+  double ConA[Mc*Kr];
+  double ConB[Kr*Nc];
   /* For 4 columns j of B */
   for (int j = 0; j < N; j+=4)
   {
@@ -454,69 +561,32 @@ static void do_block (int lda, int Mr, int Nr, int Kr, double* A, double* B, dou
     for (int i = 0; i < M; i+=4) 
     {
       /* Compute C(i,j) */
+//      printf("i=%d,j=%d\n",i,j);
       if(j == 0) cmem4xk_a(K, lda, A+i, &ConA[i*K]);
       mult4x4_256(K, lda, &ConA[i*K], &ConB[K*j], C+i+j*lda);
     }
+    if (m == 1) {
+      mult1x1_256(K, lda, &A[Mr-1], &B[j*lda], C+Mr-1+j*lda);
+      mult1x1_256(K, lda, &A[Mr-1], &B[(j+1)*lda], C+Mr-1+(j+1)*lda);
+      mult1x1_256(K, lda, &A[Mr-1], &B[(j+2)*lda], C+Mr-1+(j+2)*lda);
+      mult1x1_256(K, lda, &A[Mr-1], &B[(j+3)*lda], C+Mr-1+(j+3)*lda);
+    } else if (m == 3) {
+      cmem3xk_a(K, lda, A+Mr-3, &ConA[(Mc-4)*K]);
+      mult3x4_256(K, lda, &ConA[(Mc-4)*K], &ConB[K*j], C+Mr-3+j*lda);
+    } else {}
   }
+  if (n == 1) {
+    for (int i = 0; i < Mr; ++i)
+      mult1x1_256(K, lda, &A[i], &B[(Nr-1)*lda], C+i+(Nr-1)*lda);
+  } else if (n == 3) {
+    for (int i = 0; i < Mr; ++i)
+    {
+      mult1x1_256(K, lda, &A[i], &B[(Nr-1)*lda], C+i+(Nr-1)*lda);
+      mult1x1_256(K, lda, &A[i], &B[(Nr-2)*lda], C+i+(Nr-2)*lda);
+      mult1x1_256(K, lda, &A[i], &B[(Nr-3)*lda], C+i+(Nr-3)*lda);
+    }
+  } else {}
 
-  if(m == 1) {
-    /* Calculate last column of C */
-    for (int i = 0; i < M; ++i)
-    {
-      double ciz = C[i+(Nr-1)*lda];
-      for (int k = 0; k < K; ++k)
-        ciz += A[i+k*lda] * B[k+(Nr-1)*lda];
-      C[i+(Nr-1)*lda] = ciz;
-    }
-   /* Calculate last row of C */
-    for (int j = 0; j < N; ++j)
-    {
-      double czj = C[(Mr-1)+j*lda];
-      for (int k = 0; k < K; ++k)
-        czj += A[Mr-1+k*lda] * B[k+j*lda];
-      C[Mr-1+j*lda] = czj;
-    }
-    /* Calculate the element on the intersection between last row and column of C */
-    double czz = C[(Mr-1)+(Nr-1)*lda];
-    for (int k = 0; k < K; ++k)
-      czz += A[Mr-1+k*lda] * B[k+(Nr-1)*lda];
-    C[Mr-1+(Nr-1)*lda] = czz;
-  } else if(m == 3) {
-    /* Calculate last 3 columns of C */
-    for (int i = 0; i < M; ++i)
-    {
-      double cil1 = C[i+(Nr-1)*lda];
-      double cil2 = C[i+(Nr-2)*lda];
-      double cil3 = C[i+(Nr-3)*lda];
-      for (int k = 0; k < K; ++k)
-      {
-        cil1 += A[i+k*lda] * B[k+(Nr-1)*lda];
-        cil2 += A[i+k*lda] * B[k+(Nr-2)*lda];
-        cil3 += A[i+k*lda] * B[k+(Nr-3)*lda];
-      }
-      C[i+(Nr-1)*lda] = cil1;
-      C[i+(Nr-2)*lda] = cil2;
-      C[i+(Nr-3)*lda] = cil3;
-    }
-   /* Calculate last 3 rows of C */
-    for (int j = 0; j < N; ++j)
-    {
-      double cl1j = C[(Mr-1)+j*lda];
-      double cl2j = C[(Mr-2)+j*lda];
-      double cl3j = C[(Mr-3)+j*lda];
-      for (int k = 0; k < K; ++k)
-      {
-        cl1j += A[Mr-1+k*lda] * B[k+j*lda];
-        cl2j += A[Mr-2+k*lda] * B[k+j*lda];
-        cl3j += A[Mr-3+k*lda] * B[k+j*lda];
-      }
-      C[Mr-1+j*lda] = cl1j;
-      C[Mr-2+j*lda] = cl2j;
-      C[Mr-3+j*lda] = cl3j;
-    }
-    /* Calculate the elements in 3x3 matrix in intersection between last row and column of C */
-    mult3x3_256(K, lda, &A[Mr-3], &B[lda*(Nr-3)], &C[(Mr-3)+(Nr-3)*lda]);
-  }
 }
 
 /* This routine performs a dgemm operation

@@ -1,10 +1,10 @@
 # On Trestles we will check versus your performance versus Intel MKL library's BLAS. 
 
 CC = cc 
-OPT = -O3 -mavx
+OPT = -fprofile-use -ftest-coverage -O3 -ffast-math -mavx
 CFLAGS = -Wall -std=gnu99 $(OPT)
 MKLROOT = /util/comp/intel/16/mkl
-LDLIBS = -ldl -lrt -Wl,--start-group $(MKLROOT)/lib/intel64/libmkl_intel_lp64.a $(MKLROOT)/lib/intel64/libmkl_sequential.a $(MKLROOT)/lib/intel64/libmkl_core.a -Wl,--end-group -lpthread -lm
+LDLIBS = -lgcov -ldl -lrt -Wl,--start-group $(MKLROOT)/lib/intel64/libmkl_intel_lp64.a $(MKLROOT)/lib/intel64/libmkl_sequential.a $(MKLROOT)/lib/intel64/libmkl_core.a -Wl,--end-group -lpthread -lm
 
 
 targets = benchmark-naive benchmark-blocked benchmark-blas
